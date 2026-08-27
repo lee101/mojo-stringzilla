@@ -36,6 +36,9 @@ def main():
     row("find miss, 9 MB haystack", best(lambda: sz.find(text, needle)), best(lambda: upstream.find(text, needle)))
     row("rfind miss, 9 MB haystack", best(lambda: sz.rfind(text, needle)), best(lambda: upstream.rfind(text, needle)))
     row("count overlap, 9 MB haystack", best(lambda: sz.count(text, b"the", allowoverlap=True)), best(lambda: upstream.count(text, b"the", allowoverlap=True)))
+    row("find first of miss, 9 MB haystack", best(lambda: sz.find_first_of(text, b"XYZ")), best(lambda: upstream.find_first_of(text, b"XYZ")))
+    row("find last of miss, 9 MB haystack", best(lambda: sz.find_last_of(text, b"XYZ")), best(lambda: upstream.find_last_of(text, b"XYZ")))
+    row("count byteset, 9 MB haystack", best(lambda: sz.count_byteset(text, b"aeiou")), best(lambda: upstream.count_byteset(text, b"aeiou")))
     row("argsort, 80k strings", best(lambda: sz.Strs(values).argsort()), best(lambda: upstream.Strs(values).argsort()))
 
 

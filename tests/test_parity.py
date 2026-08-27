@@ -91,6 +91,23 @@ def test_simd_block_boundaries_and_count_masks_match_upstream():
         assert sz.count(text, needle, allowoverlap=True) == upstream.count(text, needle, allowoverlap=True)
 
 
+@pytest.mark.parametrize("length", [1, 7, 31, 32, 33, 63, 64, 65, 95])
+def test_byteset_simd_blocks_tails_and_inversion_match_upstream(length):
+    data = bytearray(b"x" * length)
+    for position in {0, length // 2, length - 1}:
+        data[position] = ord("q")
+    text = bytes(data)
+    for chars in (b"q", b"abcq", b"XYZ"):
+        for start, end in ((0, length), (1, length), (0, length - 1), (2, length - 2)):
+            for name in (
+                "find_first_of", "find_first_not_of", "find_last_of",
+                "find_last_not_of", "count_byteset",
+            ):
+                assert getattr(sz, name)(text, chars, start, end) == getattr(
+                    upstream, name
+                )(text, chars, start, end)
+
+
 @pytest.mark.parametrize("reverse", [False, True])
 def test_strs_argsort_matches_upstream(reverse):
     values = ["z", "aa", "b", "a", "", "é", "e", "aa"]

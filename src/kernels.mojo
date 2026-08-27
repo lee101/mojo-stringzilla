@@ -29,6 +29,15 @@ def in_set(value: UInt8, chars: BPtr, n: Int) -> Bool:
     return False
 
 
+def byte_set_matches[W: Int](values: SIMD[DType.uint8, W], chars: BPtr, n: Int) -> SIMD[DType.bool, W]:
+    var matches = values.eq(SIMD[DType.uint8, W](chars.load(0)))
+    var j = 1
+    while j < n:
+        matches = matches | values.eq(SIMD[DType.uint8, W](chars.load(j)))
+        j += 1
+    return matches
+
+
 def find_impl(text: BPtr, text_n: Int, needle: BPtr, needle_n: Int, start: Int, end: Int) -> Int:
     if needle_n == 0:
         return start
@@ -180,6 +189,16 @@ def msz_first_of(text_addr: Int, text_n: Int, chars_addr: Int, chars_n: Int, sta
     var text = BPtr(unsafe_from_address=text_addr)
     var chars = BPtr(unsafe_from_address=chars_addr)
     var i = start
+    if chars_n == 0:
+        return start if invert != 0 and start < end else -1
+    comptime W = simd_width_of[DType.uint8]()
+    while i + W <= end:
+        var matches = byte_set_matches[W](text.load[width=W](i), chars, chars_n)
+        if (invert == 0 and matches.reduce_or()) or (invert != 0 and not matches.reduce_and()):
+            for lane in range(W):
+                if matches[lane] != (invert != 0):
+                    return i + lane
+        i += W
     while i < end:
         if in_set(text.load(i), chars, chars_n) != (invert != 0):
             return i
@@ -192,6 +211,18 @@ def msz_last_of(text_addr: Int, text_n: Int, chars_addr: Int, chars_n: Int, star
     var text = BPtr(unsafe_from_address=text_addr)
     var chars = BPtr(unsafe_from_address=chars_addr)
     var i = end - 1
+    if chars_n == 0:
+        return end - 1 if invert != 0 and start < end else -1
+    comptime W = simd_width_of[DType.uint8]()
+    while i - W + 1 >= start:
+        var block = i - W + 1
+        var matches = byte_set_matches[W](text.load[width=W](block), chars, chars_n)
+        if (invert == 0 and matches.reduce_or()) or (invert != 0 and not matches.reduce_and()):
+            for offset in range(W):
+                var lane = W - 1 - offset
+                if matches[lane] != (invert != 0):
+                    return block + lane
+        i -= W
     while i >= start:
         if in_set(text.load(i), chars, chars_n) != (invert != 0):
             return i
@@ -205,6 +236,15 @@ def msz_count_of(text_addr: Int, text_n: Int, chars_addr: Int, chars_n: Int, sta
     var chars = BPtr(unsafe_from_address=chars_addr)
     var found = 0
     var i = start
+    if chars_n == 0:
+        return 0
+    comptime W = simd_width_of[DType.uint8]()
+    var ones = SIMD[DType.uint8, W](1)
+    var zeroes = SIMD[DType.uint8, W](0)
+    while i + W <= end:
+        var matches = byte_set_matches[W](text.load[width=W](i), chars, chars_n)
+        found += Int(matches.select(ones, zeroes).reduce_add()[0])
+        i += W
     while i < end:
         if in_set(text.load(i), chars, chars_n):
             found += 1

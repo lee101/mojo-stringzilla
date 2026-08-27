@@ -42,15 +42,18 @@ pixi run bench
 ## Benchmarks
 
 Measured with `pixi run bench` on an Intel Xeon E5-2697 v4 (Linux 6.8, single-threaded
-calls). The CPU search and short-overlap-count paths use host-width SIMD; the packed-tape sort
-also wins on this input.
+calls). Substring search, short-overlap counting, and byte-set scans use host-width SIMD;
+the packed-tape sort also wins on this input.
 
 | kernel | mojo-stringzilla | stringzilla | ratio |
 | --- | ---: | ---: | ---: |
-| find miss, 9 MB haystack | 0.58 ms | 0.81 ms | 1.40x faster |
-| rfind miss, 9 MB haystack | 0.59 ms | 0.84 ms | 1.42x faster |
-| count overlap, 9 MB haystack | 1.01 ms | 6.27 ms | 6.19x faster |
-| argsort, 80k strings | 86.53 ms | 172.79 ms | 2.00x faster |
+| find miss, 9 MB haystack | 0.49 ms | 0.73 ms | 1.47x faster |
+| rfind miss, 9 MB haystack | 0.52 ms | 0.76 ms | 1.45x faster |
+| count overlap, 9 MB haystack | 0.91 ms | 5.70 ms | 6.25x faster |
+| find first of miss, 9 MB haystack | 0.66 ms | 0.66 ms | 1.00x slower |
+| find last of miss, 9 MB haystack | 0.72 ms | 7.33 ms | 10.18x faster |
+| count byteset, 9 MB haystack | 1.29 ms | 47.35 ms | 36.59x faster |
+| argsort, 80k strings | 80.33 ms | 167.07 ms | 2.08x faster |
 
 ## How it works
 
@@ -58,12 +61,16 @@ Python UTF-8 encodes each input and passes its non-null NumPy byte-buffer addres
 through `ctypes`. The C ABI exports take `Int` addresses, reconstruct mutable-origin Mojo
 pointers, and never allocate. Search uses host-width SIMD masks to skip blocks with no matching
 first and last byte, then verifies only candidate lanes and handles the scalar tail. Overlapping
-counts for one-, two-, and three-byte needles reduce exact SIMD match masks directly. For bulk
-ordering, Python packs all values into one tape plus an `int64` offsets array; Mojo heapsorts an
-index array, so the byte data is never copied during the sort.
+counts for one-, two-, and three-byte needles reduce exact SIMD match masks directly. Byte-set
+search and counting combine one comparison mask per requested byte, reduce full vectors, and
+retain a scalar remainder loop. For bulk ordering, Python packs all values into one tape plus an
+`int64` offsets array; Mojo heapsorts an index array, so the byte data is never copied during the
+sort.
 
 No GPU path is included: search, counting, and comparison-based ordering are memory-bound, so
-transfer and launch overhead outweigh useful parallel work for these kernels.
+transfer and launch overhead outweigh useful parallel work for these kernels. The scans also
+remain serial: ordered searches benefit from early exit, while threading the now memory-bound
+full scans would add launch and reduction overhead.
 
 The library is built as `dist/libmojo-stringzilla.so` from a single Mojo compilation unit. That
 keeps compilation centralized while the Python API makes one native call per search primitive.
