@@ -10,11 +10,11 @@ def equal_at(text: BPtr, needle: BPtr, at: Int, n: Int) -> Bool:
     var i = 0
     comptime W = simd_width_of[DType.uint8]()
     while i + W <= n:
-        if text.load[width=W](at + i) != needle.load[width=W](i):
+        if text.unsafe_load[width=W](at + i) != needle.unsafe_load[width=W](i):
             return False
         i += W
     while i < n:
-        if text.load(at + i) != needle.load(i):
+        if text.unsafe_load(at + i) != needle.unsafe_load(i):
             return False
         i += 1
     return True
@@ -23,17 +23,17 @@ def equal_at(text: BPtr, needle: BPtr, at: Int, n: Int) -> Bool:
 def in_set(value: UInt8, chars: BPtr, n: Int) -> Bool:
     var i = 0
     while i < n:
-        if value == chars.load(i):
+        if value == chars.unsafe_load(i):
             return True
         i += 1
     return False
 
 
 def byte_set_matches[W: Int](values: SIMD[DType.uint8, W], chars: BPtr, n: Int) -> SIMD[DType.bool, W]:
-    var matches = values.eq(SIMD[DType.uint8, W](chars.load(0)))
+    var matches = values.eq(SIMD[DType.uint8, W](chars.unsafe_load(0)))
     var j = 1
     while j < n:
-        matches = matches | values.eq(SIMD[DType.uint8, W](chars.load(j)))
+        matches = matches | values.eq(SIMD[DType.uint8, W](chars.unsafe_load(j)))
         j += 1
     return matches
 
@@ -46,18 +46,18 @@ def find_impl(text: BPtr, text_n: Int, needle: BPtr, needle_n: Int, start: Int, 
     var i = start
     var last = end - needle_n
     comptime W = simd_width_of[DType.uint8]()
-    var first = SIMD[DType.uint8, W](needle.load(0))
-    var final = SIMD[DType.uint8, W](needle.load(needle_n - 1))
+    var first = SIMD[DType.uint8, W](needle.unsafe_load(0))
+    var final = SIMD[DType.uint8, W](needle.unsafe_load(needle_n - 1))
     while i + W - 1 <= last:
-        var candidates = text.load[width=W](i)
-        var matches = candidates.eq(first) & text.load[width=W](i + needle_n - 1).eq(final)
+        var candidates = text.unsafe_load[width=W](i)
+        var matches = candidates.eq(first) & text.unsafe_load[width=W](i + needle_n - 1).eq(final)
         if matches:
             for lane in range(W):
                 if matches[lane] and equal_at(text, needle, i + lane, needle_n):
                     return i + lane
         i += W
     while i <= last:
-        if text.load(i) == needle.load(0) and text.load(i + needle_n - 1) == needle.load(needle_n - 1) and equal_at(text, needle, i, needle_n):
+        if text.unsafe_load(i) == needle.unsafe_load(0) and text.unsafe_load(i + needle_n - 1) == needle.unsafe_load(needle_n - 1) and equal_at(text, needle, i, needle_n):
             return i
         i += 1
     return -1
@@ -70,11 +70,11 @@ def rfind_impl(text: BPtr, text_n: Int, needle: BPtr, needle_n: Int, start: Int,
         return -1
     var i = end - needle_n
     comptime W = simd_width_of[DType.uint8]()
-    var first = SIMD[DType.uint8, W](needle.load(0))
-    var final = SIMD[DType.uint8, W](needle.load(needle_n - 1))
+    var first = SIMD[DType.uint8, W](needle.unsafe_load(0))
+    var final = SIMD[DType.uint8, W](needle.unsafe_load(needle_n - 1))
     while i - W + 1 >= start:
         var block = i - W + 1
-        var matches = text.load[width=W](block).eq(first) & text.load[width=W](block + needle_n - 1).eq(final)
+        var matches = text.unsafe_load[width=W](block).eq(first) & text.unsafe_load[width=W](block + needle_n - 1).eq(final)
         if matches:
             for offset in range(W):
                 var lane = W - 1 - offset
@@ -82,22 +82,22 @@ def rfind_impl(text: BPtr, text_n: Int, needle: BPtr, needle_n: Int, start: Int,
                     return block + lane
         i -= W
     while i >= start:
-        if text.load(i) == needle.load(0) and text.load(i + needle_n - 1) == needle.load(needle_n - 1) and equal_at(text, needle, i, needle_n):
+        if text.unsafe_load(i) == needle.unsafe_load(0) and text.unsafe_load(i + needle_n - 1) == needle.unsafe_load(needle_n - 1) and equal_at(text, needle, i, needle_n):
             return i
         i -= 1
     return -1
 
 
 def compare_offsets(tape: BPtr, offsets: IPtr, left: Int, right: Int) -> Int:
-    var left_start = Int(offsets.load(left))
-    var left_end = Int(offsets.load(left + 1))
-    var right_start = Int(offsets.load(right))
-    var right_end = Int(offsets.load(right + 1))
+    var left_start = Int(offsets.unsafe_load(left))
+    var left_end = Int(offsets.unsafe_load(left + 1))
+    var right_start = Int(offsets.unsafe_load(right))
+    var right_end = Int(offsets.unsafe_load(right + 1))
     var shared = min(left_end - left_start, right_end - right_start)
     var i = 0
     while i < shared:
-        var a = tape.load(left_start + i)
-        var b = tape.load(right_start + i)
+        var a = tape.unsafe_load(left_start + i)
+        var b = tape.unsafe_load(right_start + i)
         if a >= 128 and b < 128:
             return -1
         if a < 128 and b >= 128:
@@ -115,10 +115,10 @@ def compare_offsets(tape: BPtr, offsets: IPtr, left: Int, right: Int) -> Int:
 
 
 def comes_after(tape: BPtr, offsets: IPtr, indices: IPtr, left: Int, right: Int, reverse: Int) -> Bool:
-    var cmp = compare_offsets(tape, offsets, Int(indices.load(left)), Int(indices.load(right)))
+    var cmp = compare_offsets(tape, offsets, Int(indices.unsafe_load(left)), Int(indices.unsafe_load(right)))
     if cmp == 0:
-        var left_index = Int(indices.load(left))
-        var right_index = Int(indices.load(right))
+        var left_index = Int(indices.unsafe_load(left))
+        var right_index = Int(indices.unsafe_load(right))
         if left_index < right_index:
             cmp = -1
         elif left_index > right_index:
@@ -133,8 +133,8 @@ def sift_down(tape: BPtr, offsets: IPtr, indices: IPtr, root_arg: Int, stop: Int
         if child + 1 <= stop and comes_after(tape, offsets, indices, child + 1, child, reverse):
             child += 1
         if comes_after(tape, offsets, indices, child, root, reverse):
-            var tmp = indices.load(root)
-            indices.store(root, indices.load(child))
+            var tmp = indices.unsafe_load(root)
+            indices.store(root, indices.unsafe_load(child))
             indices.store(child, tmp)
             root = child
         else:
@@ -164,19 +164,19 @@ def msz_count(text_addr: Int, text_n: Int, needle_addr: Int, needle_n: Int, star
         comptime W = simd_width_of[DType.uint8]()
         var ones = SIMD[DType.uint8, W](1)
         var zeroes = SIMD[DType.uint8, W](0)
-        var first = SIMD[DType.uint8, W](needle.load(0))
+        var first = SIMD[DType.uint8, W](needle.unsafe_load(0))
         while at + W - 1 <= last:
-            var matches = text.load[width=W](at).eq(first)
+            var matches = text.unsafe_load[width=W](at).eq(first)
             if needle_n >= 2:
-                var final = SIMD[DType.uint8, W](needle.load(needle_n - 1))
-                matches = matches & text.load[width=W](at + needle_n - 1).eq(final)
+                var final = SIMD[DType.uint8, W](needle.unsafe_load(needle_n - 1))
+                matches = matches & text.unsafe_load[width=W](at + needle_n - 1).eq(final)
             if needle_n == 3:
-                var middle = SIMD[DType.uint8, W](needle.load(1))
-                matches = matches & text.load[width=W](at + 1).eq(middle)
+                var middle = SIMD[DType.uint8, W](needle.unsafe_load(1))
+                matches = matches & text.unsafe_load[width=W](at + 1).eq(middle)
             found += Int(matches.select(ones, zeroes).reduce_add()[0])
             at += W
     while at <= last:
-        if text.load(at) == needle.load(0) and equal_at(text, needle, at, needle_n):
+        if text.unsafe_load(at) == needle.unsafe_load(0) and equal_at(text, needle, at, needle_n):
             found += 1
             at += 1 if overlap != 0 else needle_n
         else:
@@ -193,14 +193,14 @@ def msz_first_of(text_addr: Int, text_n: Int, chars_addr: Int, chars_n: Int, sta
         return start if invert != 0 and start < end else -1
     comptime W = simd_width_of[DType.uint8]()
     while i + W <= end:
-        var matches = byte_set_matches[W](text.load[width=W](i), chars, chars_n)
+        var matches = byte_set_matches[W](text.unsafe_load[width=W](i), chars, chars_n)
         if (invert == 0 and matches.reduce_or()) or (invert != 0 and not matches.reduce_and()):
             for lane in range(W):
                 if matches[lane] != (invert != 0):
                     return i + lane
         i += W
     while i < end:
-        if in_set(text.load(i), chars, chars_n) != (invert != 0):
+        if in_set(text.unsafe_load(i), chars, chars_n) != (invert != 0):
             return i
         i += 1
     return -1
@@ -216,7 +216,7 @@ def msz_last_of(text_addr: Int, text_n: Int, chars_addr: Int, chars_n: Int, star
     comptime W = simd_width_of[DType.uint8]()
     while i - W + 1 >= start:
         var block = i - W + 1
-        var matches = byte_set_matches[W](text.load[width=W](block), chars, chars_n)
+        var matches = byte_set_matches[W](text.unsafe_load[width=W](block), chars, chars_n)
         if (invert == 0 and matches.reduce_or()) or (invert != 0 and not matches.reduce_and()):
             for offset in range(W):
                 var lane = W - 1 - offset
@@ -224,7 +224,7 @@ def msz_last_of(text_addr: Int, text_n: Int, chars_addr: Int, chars_n: Int, star
                     return block + lane
         i -= W
     while i >= start:
-        if in_set(text.load(i), chars, chars_n) != (invert != 0):
+        if in_set(text.unsafe_load(i), chars, chars_n) != (invert != 0):
             return i
         i -= 1
     return -1
@@ -242,11 +242,11 @@ def msz_count_of(text_addr: Int, text_n: Int, chars_addr: Int, chars_n: Int, sta
     var ones = SIMD[DType.uint8, W](1)
     var zeroes = SIMD[DType.uint8, W](0)
     while i + W <= end:
-        var matches = byte_set_matches[W](text.load[width=W](i), chars, chars_n)
+        var matches = byte_set_matches[W](text.unsafe_load[width=W](i), chars, chars_n)
         found += Int(matches.select(ones, zeroes).reduce_add()[0])
         i += W
     while i < end:
-        if in_set(text.load(i), chars, chars_n):
+        if in_set(text.unsafe_load(i), chars, chars_n):
             found += 1
         i += 1
     return found
@@ -286,8 +286,8 @@ def msz_argsort(tape_addr: Int, offsets_addr: Int, n: Int, indices_addr: Int, re
         i -= 1
     var end = n - 1
     while end > 0:
-        var tmp = indices.load(0)
-        indices.store(0, indices.load(end))
+        var tmp = indices.unsafe_load(0)
+        indices.store(0, indices.unsafe_load(end))
         indices.store(end, tmp)
         sift_down(tape, offsets, indices, 0, end - 1, reverse)
         end -= 1
